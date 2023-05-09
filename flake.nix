@@ -224,10 +224,11 @@
 
               buildPhase = ''
                 # Create initramfs with main program and libraries.
-                mkdir -p initramfs/lib/firmware initramfs/bin initramfs/seedsigner
+                mkdir -p initramfs/lib/firmware initramfs/bin initramfs/seedsigner initramfs/python
 
                 # Copy python3.
                 cp ${python}/bin/python3 initramfs/bin/
+                cp -a ${python}/lib/ initramfs/python
 
                 # Copy python source.
                 cp -R src/* initramfs/seedsigner/
@@ -263,7 +264,7 @@
 
               initramfs = self.lib.${system}.mkinitramfs debug;
               img-name = if debug then "seedsigner-debug.img" else "seedsigner.img";
-              cmdlinetxt = pkgs.writeText "cmdline.txt" "console=tty1 rdinit=/seedsigner/hello.py oops=panic";
+              cmdlinetxt = pkgs.writeText "cmdline.txt" "console=tty1 oops=panic rdinit=/seedsigner/hello.py PYTHONHOME=/python";
               configtxt = pkgs.writeText "config.txt" (''
                 initramfs initramfs.cpio.gz followkernel
                 disable_splash=1
@@ -297,7 +298,7 @@
                 }
 
                 # Create disk image.
-                dd if=/dev/zero of=disk.img bs=1M count=16
+                dd if=/dev/zero of=disk.img bs=1M count=40
                 ${util-linux}/bin/sfdisk disk.img <<EOF
                   label: dos
                   label-id: 0xceedb0ad
