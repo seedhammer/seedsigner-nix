@@ -1,5 +1,5 @@
 {
-  description = "Builds Seedhammer disk image for Raspberry Pi";
+  description = "Builds SeedSigner disk image for Raspberry Pi";
 
   inputs = {
     nixpkgs.url = "nixpkgs";
@@ -53,8 +53,8 @@
 
               # For reproducible builds.
               KBUILD_BUILD_TIMESTAMP = timestamp;
-              KBUILD_BUILD_USER = "seedhammer";
-              KBUILD_BUILD_HOST = "seedhammer.com";
+              KBUILD_BUILD_USER = "seedsigner";
+              KBUILD_BUILD_HOST = "seedsigner.com";
 
               enableParallelBuilding = true;
 
@@ -217,7 +217,8 @@
             pkgs.stdenvNoCC.mkDerivation {
               name = "initramfs";
 
-              dontUnpack = true;
+              src = ./.;
+
               buildPhase = ''
                 # Create initramfs with main program and libraries.
                 mkdir -p initramfs/lib/firmware initramfs/bin initramfs/seedsigner
@@ -258,8 +259,8 @@
                   self.packages.${system}.kernel;
 
               initramfs = self.lib.${system}.mkinitramfs debug;
-              img-name = if debug then "seedhammer-debug.img" else "seedhammer.img";
-              cmdlinetxt = pkgs.writeText "cmdline.txt" "console=tty1 rdinit=/bin/python3 oops=panic quiet";
+              img-name = if debug then "seedsigner-debug.img" else "seedsigner.img";
+              cmdlinetxt = pkgs.writeText "cmdline.txt" "console=tty1 rdinit=/bin/python3 oops=panic";
               configtxt = pkgs.writeText "config.txt" (''
                 initramfs initramfs.cpio.gz followkernel
                 disable_splash=1
