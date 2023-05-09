@@ -128,8 +128,10 @@
                 # Enable FTDI USB serial driver.
                 ./scripts/config --enable USB_SERIAL
                 ./scripts/config --enable USB_SERIAL_FTDI_SIO
+
                 # Disable HDMI framebuffer device.
-                ./scripts/config --disable FB_BCM2708
+                # ./scripts/config --disable FB_BCM2708
+
                 # Enable display driver.
                 ./scripts/config --enable BACKLIGHT_GPIO
                 ./scripts/config --enable DRM
@@ -213,6 +215,7 @@
             let
               pkgs = localpkgs;
               panel-firmware = self.lib.${system}.panel-firmware;
+              python = crosspkgs.pkgsStatic.python3;
             in
             pkgs.stdenvNoCC.mkDerivation {
               name = "initramfs";
@@ -224,7 +227,7 @@
                 mkdir -p initramfs/lib/firmware initramfs/bin initramfs/seedsigner
 
                 # Copy python3.
-                cp ${crosspkgs.python3}/bin/python3 initramfs/bin/
+                cp ${python}/bin/python3 initramfs/bin/
 
                 # Copy python source.
                 cp -R src/* initramfs/seedsigner/
@@ -260,7 +263,7 @@
 
               initramfs = self.lib.${system}.mkinitramfs debug;
               img-name = if debug then "seedsigner-debug.img" else "seedsigner.img";
-              cmdlinetxt = pkgs.writeText "cmdline.txt" "console=tty1 rdinit=/bin/python3 oops=panic";
+              cmdlinetxt = pkgs.writeText "cmdline.txt" "console=tty1 rdinit=/seedsigner/hello.py oops=panic";
               configtxt = pkgs.writeText "config.txt" (''
                 initramfs initramfs.cpio.gz followkernel
                 disable_splash=1
