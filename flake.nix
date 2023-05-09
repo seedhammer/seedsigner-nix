@@ -212,11 +212,6 @@
           mkinitramfs = debug:
             let
               pkgs = localpkgs;
-              controller =
-                if debug then
-                  self.packages.${system}.controller-debug
-                else
-                  self.packages.${system}.controller;
               panel-firmware = self.lib.${system}.panel-firmware;
             in
             pkgs.stdenvNoCC.mkDerivation {
@@ -224,9 +219,15 @@
 
               dontUnpack = true;
               buildPhase = ''
-                # Create initramfs with controller program and libraries.
-                mkdir -p initramfs/lib/firmware
-                cp ${controller}/bin/controller initramfs/controller
+                # Create initramfs with main program and libraries.
+                mkdir -p initramfs/lib/firmware initramfs/bin initramfs/seedsigner
+
+                # Copy python3.
+                cp ${crosspkgs.python3}/bin/python3 initramfs/bin/
+
+                # Copy python source.
+                cp -R src/* initramfs/seedsigner/
+
                 cp -R "${self.packages.${system}.camera-driver}"/* initramfs/
                 cp ${panel-firmware} initramfs/lib/firmware/panel.bin
                 # Set constant mtimes and permissions for determinism.
@@ -258,7 +259,7 @@
 
               initramfs = self.lib.${system}.mkinitramfs debug;
               img-name = if debug then "seedhammer-debug.img" else "seedhammer.img";
-              cmdlinetxt = pkgs.writeText "cmdline.txt" "console=tty1 rdinit=/controller oops=panic quiet";
+              cmdlinetxt = pkgs.writeText "cmdline.txt" "console=tty1 rdinit=/bin/python3 oops=panic quiet";
               configtxt = pkgs.writeText "config.txt" (''
                 initramfs initramfs.cpio.gz followkernel
                 disable_splash=1
@@ -331,49 +332,6 @@
 
               allowedReferences = [ ];
             };
-          mkcontroller = debug:
-            let
-              libcamera = self.packages.${system}.libcamera;
-              pkgs = crosspkgs;
-              tags = builtins.concatStringsSep "," ([ "netgo" ] ++ (if debug then [ "debug" ] else [ ]));
-            in
-            pkgs.stdenv.mkDerivation {
-              name = "controller";
-              src = ./.;
-
-              nativeBuildInputs = with pkgs.buildPackages; [
-                go_1_20
-                nukeReferences
-              ];
-
-              buildPhase = ''
-                export HOME="$PWD/gohome"
-                export GOMODCACHE=${self.packages.${system}.go-deps}
-
-                # -buildmode=pie is required by musl.
-                CGO_CXXFLAGS="-I${libcamera}/include" \
-                  CGO_LDFLAGS="-L${libcamera}/lib" \
-                  CGO_ENABLED=1 GOOS=linux GOARCH=arm GOARM=6 \
-                  go build -buildmode pie -tags ${tags} -ldflags="-s -w" ./cmd/controller
-              '';
-
-              installPhase = ''
-                mkdir -p $out/bin
-                cp controller $out/bin
-              '';
-
-              fixupPhase = ''
-                patchelf --set-rpath "/lib" \
-                  --set-interpreter "/lib/${loader-lib}" \
-                  $out/bin/controller
-                nuke-refs $out/bin/controller
-                prefix=${pkgs.stdenv.targetPlatform.config}
-                # Strip the indeterministic Go build id.
-                "$prefix"-objcopy -R .note.go.buildid $out/bin/controller
-              '';
-
-              allowedReferences = [ ];
-            };
         };
         packages =
           {
@@ -402,8 +360,6 @@
               outputHashAlgo = "sha256";
               outputHash = "ST/4Sx0jItRvT9kgFqxkGMKBJF8f+/vaxb8+OWZHqZU=";
             };
-            controller = self.lib.${system}.mkcontroller false;
-            controller-debug = self.lib.${system}.mkcontroller true;
             util-linux =
               let
                 pkgs = localpkgs;
@@ -582,90 +538,7 @@
             initramfs-debug = self.lib.${system}.mkinitramfs true;
             image = self.lib.${system}.mkimage false;
             image-debug = self.lib.${system}.mkimage true;
-            # reload the controller binary to a running seedhammer debug image.
-            reload = let pkgs = localpkgs; in pkgs.writeShellScriptBin "reload" ''
-              set -e
-              USBDEV=$1
-              if [ -z "$1" ]; then
-                  echo "error: specify USB device"
-                  exit 1
-              fi
-
-              PROG="${self.packages.${system}.controller-debug}/bin/controller"
-
-              echo "reload $(wc -c < "$PROG")" > "$USBDEV"
-              cat "$PROG" > "$USBDEV"
-              exec cat "$USBDEV"
-            '';
-            # reload-fast is a faster, but impure, way of reloading the controller binary
-            # from a developer shell.
-            reload-fast = let pkgs = localpkgs; in pkgs.writeShellScriptBin "reload-fast" ''
-              set -e
-              USBDEV=$1
-              if [ -z "$1" ]; then
-                  echo "error: specify USB device"
-                  exit 1
-              fi
-
-              eval "$buildPhase"
-              eval "$installPhase"
-              eval "$fixupPhase"
-
-              PROG=outputs/out/bin/controller
-              echo "reload $(wc -c < "$PROG")" > "$USBDEV"
-              cat "$PROG" > "$USBDEV"
-              exec cat "$USBDEV"
-            '';
-            mkrelease = let pkgs = localpkgs; in pkgs.writeShellScriptBin "mkrelease" ''
-              set -eu
-
-              VERSION=$1
-              if [ -z "$VERSION" ]; then
-                  echo "error: specify version"
-                  exit 1
-              fi
-
-              flake="github:seedhammer/seedhammer/$VERSION"
-              nix build "$flake"
-              nix run "$flake"#stamp-release $VERSION
-
-              if [ -n "$SSH_SIGNING_KEY" ]; then
-                ssh-keygen -Y sign -f "$SSH_SIGNING_KEY" -n seedhammer.img seedhammer-"$VERSION".img
-              fi
-            '';
-            stamp-release = let pkgs = localpkgs; in pkgs.writeShellScriptBin "stamp-release" ''
-              set -eu
-
-              # For determinism.
-              export TZ=UTC
-              VERSION=$1
-              if [ -z "$VERSION" ]; then
-                  echo "error: specify version"
-                  exit 1
-              fi
-              TMPDIR="$(mktemp -d)"
-              trap 'rm -rf -- "$TMPDIR"' EXIT
-
-              src="result/seedhammer.img"
-              dst="seedhammer-$VERSION.img"
-
-              # Append the version string to the kernel cmdline, to be read by the controller binary.
-              # the image packages stores the partition offset for us.
-              START=$(${self.packages.${system}.util-linux}/bin/fdisk -l -o Start $src|tail -n 1)
-              OFFSET=$(( $START*512 ))
-              ${pkgs.mtools}/bin/mcopy -bpm -i "$src@@$OFFSET" ::cmdline.txt "$TMPDIR/"
-              echo -n " sh.version=$VERSION" >> "$TMPDIR/cmdline.txt"
-              # preserve attributes for determinism.
-              chmod 0755 "$TMPDIR/cmdline.txt"
-              ${pkgs.coreutils}/bin/touch -d '${timestamp}' "$TMPDIR/cmdline.txt"
-              cp "$src" "$dst"
-              chmod +w "$dst"
-              ${pkgs.mtools}/bin/mdel -i "$dst@@$OFFSET" ::cmdline.txt
-              ${pkgs.mtools}/bin/mcopy -bpm -i "$dst@@$OFFSET" "$TMPDIR/cmdline.txt" ::
-            '';
             default = self.packages.${system}.image;
           };
-        # developer shell for running .#reload-fast.
-        devShells.default = self.packages.${system}.controller-debug;
       });
 }
