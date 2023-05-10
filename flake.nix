@@ -40,14 +40,14 @@
                 owner = "raspberrypi";
                 repo = "linux";
                 rev = "0afb5e98488aed7017b9bf321b575d0177feb7ed";
-                sha256 = "X99lTGLJEtCtGqY1UCaT15vlbY8mdRiCKaF9IraTrc8=";
+                sha256 = "t+xq0HmT163TaE+5/sb2ZkNWDbBoiwbXk3oi6YEYsIA=";
                 # Remove files that introduce case sensitivity clashes on darwin.
                 postFetch = ''
                   rm $out/include/uapi/linux/netfilter/xt_*.h
                   rm $out/include/uapi/linux/netfilter_ipv4/ipt_*.h
                   rm $out/include/uapi/linux/netfilter_ipv6/ip6t_*.h
-                  rm -rf $out/net
-                  rm -rf $out/tools/memory-model/litmus-tests
+                  rm $out/net/netfilter/xt_*.c
+                  rm $out/tools/memory-model/litmus-tests/Z6.0+poonce*
                 '';
               };
 
