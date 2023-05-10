@@ -481,7 +481,7 @@
 
                 installPhase = ''
                   mkdir -p $out/lib/libcamera $out/share/libcamera/ipa/raspberrypi $out/include
-                  cp ./src/libcamera/base/libcamera-base.so.${version} \
+                  cp -P ./src/libcamera/base/libcamera-base.so.${version} \
                     ./src/libcamera/base/libcamera-base.so \
                     ./src/libcamera/libcamera.so.${version} \
                     ./src/libcamera/libcamera.so \
