@@ -469,7 +469,6 @@
                     -Dpipelines=raspberrypi \
                     -Ddocumentation=disabled \
                     -Dlc-compliance=disabled \
-                    -Dwerror=false \
                     --cross-file=${cross-file} \
                     --buildtype=plain \
                     --prefix=/ \
